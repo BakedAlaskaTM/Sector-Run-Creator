@@ -1,7 +1,7 @@
 import os
 import math
 MAIN_PATH = os.path.dirname(os.path.abspath(__file__))
-MAP_NAME = "PTC"
+MAP_NAME = "kraka"
 
 def time_converter(time_str):
     split_time = time_str.split(":")
@@ -16,11 +16,11 @@ def time_to_string(time_secs):
     m = str(math.floor((time_secs - int(h)*3600) / 60))
     s = str(round(time_secs - int(h)*3600 - int(m)*60, 2)).split(".")
     if h != "0":
-        return f"{h}:{m.zfill(2)}:{s[0].zfill(2)}.{s[1].ljust(2, "0")}"
+        return f"{h}:{m.zfill(2)}:{s[0].zfill(2)}.{s[1].ljust(2, '0')}"
     elif m != "0":
-        return f"{m}:{s[0].zfill(2)}.{s[1].ljust(2, "0")}"
+        return f"{m}:{s[0].zfill(2)}.{s[1].ljust(2, '0')}"
     else:
-        return f"{s[0]}.{s[1].ljust(2, "0")}"
+        return f"{s[0]}.{s[1].ljust(2, '0')}"
     
 def key(input):
     return input.split(" ")[2]
