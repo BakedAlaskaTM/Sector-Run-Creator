@@ -2,6 +2,7 @@ import math
 from pygbx import Gbx, GbxType
 import generate_input_file
 import os
+import re
 
 def read_config(filename: str="config.txt", settings: list=["DESTINATION"]):
     config_file = open(filename, "r")
@@ -64,6 +65,7 @@ def get_cp_times(file_path):
     return ghost_times
 
 def get_map_name(file_path):
+    regex_string = "[$][a-fA-F0-9][a-fA-F0-9][a-fA-F0-9]|[$][a-zA-Z]"
     g = Gbx(file_path)
     try:
         replay = g.get_class_by_id(GbxType.REPLAY_RECORD)
@@ -72,7 +74,8 @@ def get_map_name(file_path):
         replay = g.get_class_by_id(GbxType.REPLAY_RECORD_OLD)
     track = replay.track
     challenge = track.get_class_by_id(GbxType.CHALLENGE)
-    return challenge.map_name.strip("/")
+    regex = re.sub(regex_string,'', challenge.map_name)
+    return regex.strip()
     
 
 def create_file(dir, map_name, inputs):
@@ -212,7 +215,7 @@ def no_warp(inputs):
         
     return inputs
 
-def generate_sector_file(file_path, save_dir):
+def generate_sector_inputs(file_path):
     ghost_times = get_cp_times(file_path)
     map_name = get_map_name(file_path)
     with open(f"result.txt", 'w+') as f:
@@ -234,6 +237,4 @@ def generate_sector_file(file_path, save_dir):
 
     processed_inputs = no_warp(immediate_respawns(ghost_times, create_segmented_run(ghost_times, inputs)))
 
-    create_file(save_dir, map_name, processed_inputs)
-
-    return processed_inputs
+    return [map_name, processed_inputs]
