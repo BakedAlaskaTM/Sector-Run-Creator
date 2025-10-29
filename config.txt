@@ -1,1 +1,1 @@
-DESTINATION: C:/Users/devin/OneDrive/Documents/TMInterface/Scripts/Sector Runs
+DESTINATION: C:/Users/HS/Documents/TMInterface/Scripts/Sector_Runs/Trial

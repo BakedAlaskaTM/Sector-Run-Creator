@@ -13,6 +13,7 @@ config_dict = functions.read_config()
 file_chosen = False
 sector_inputs = []
 map_name = ""
+inputs_saved = False
 
 #window init
 root = tk.Tk()
@@ -27,15 +28,15 @@ root.grid_rowconfigure(2, weight=1)
 text_scroll = Scrollbar()
 text_left = scrolledtext.ScrolledText(root, font='Arial', background='black', foreground='white')
 text_left.grid(column=0, row=2, sticky='NEWS')
-
+text_left.insert("1.0", "Summary:\n")
 
 text_right = scrolledtext.ScrolledText(root, font='Arial', background='black', foreground='white')
 text_right.grid(column=1, row=2, sticky='NEWS')
 if config_dict["DESTINATION"].strip() == "":
-    text_left.insert("1.0", "No save location set\n")
+    text_left.insert("2.0", "No save location set\n")
     intro_right = "Set a save location to start..."
 else:
-    text_left.insert("1.0", f"Save location: {config_dict['DESTINATION']}\n")
+    text_left.insert("2.0", f"Save location: {config_dict['DESTINATION']}\n")
     intro_right = "Open a replay..."
 text_right.insert('1.0', intro_right)
 
@@ -43,21 +44,26 @@ def open_file():
     global file_chosen
     global sector_inputs
     global map_name
+    global inputs_saved
     file_path = fd.askopenfilename(
         title='Open a Replay File',
         filetypes=[('Replay Files', '*.Gbx')]
     )
-    [map_name, sector_inputs] = functions.generate_sector_inputs(file_path)
+    try:
+        [map_name, author, num_cps, final_time, sector_inputs] = functions.generate_sector_inputs(file_path)
+    except:
+        return
     input_text = ""
     for block in sector_inputs:
         for input in block:
             input_text += f"{input}\n"
         input_text += "\n"
-    text_left.delete("2.0", "3.0")
-    text_left.insert("2.0", f"\nTrack Name: {map_name}\n")
+    text_left.delete("3.0", "9.0")
+    text_left.insert("3.0", f"\nTrack Name: {map_name}\nAuthor: {author}\nCheckpoints: {num_cps}\nFinal Time: {final_time}\n")
     text_right.delete("1.0", END)
-    text_right.insert("1.0", f"{input_text.strip()}\n")
+    text_right.insert("1.0", f"Inputs:\n{input_text.strip()}\n")
     file_chosen = True
+    inputs_saved = False
     return
 
 open_button = ttk.Button(
@@ -75,8 +81,8 @@ def change_destination():
         else:
             config_file.write(f"{setting}: {value}\n")
     config_file.close()
-    text_left.delete("1.0", "2.0")
-    text_left.insert("1.0", f"Save location: {file_path}\n")
+    text_left.delete("2.0", "3.0")
+    text_left.insert("2.0", f"Save location: {file_path}\n")
     return
 
 change_dir_button = ttk.Button(
@@ -86,7 +92,17 @@ change_dir_button = ttk.Button(
 )
 
 def save_inputs():
-    functions.create_file(config_dict["DESTINATION"], map_name, sector_inputs)
+    global inputs_saved
+    try:
+        functions.create_file(config_dict["DESTINATION"], map_name, sector_inputs)
+    except OSError as error:
+        inputs_saved = False
+        text_left.delete("7.0", "9.0")
+        text_left.insert("7.0", f"\nInputs file did not save!\nReason: {error}")
+    else:
+        inputs_saved = True
+        text_left.delete("7.0", "9.0")
+        text_left.insert("7.0", f"\nInputs file saved successfully!\n")
     return
 
 save_file_button = ttk.Button(

@@ -22,7 +22,6 @@ def read_config(filename: str="config.txt", settings: list=["DESTINATION"]):
                     break
     return setting_dict
 
-
 def time_converter(time_str):
     split_time = time_str.split(":")
     length = len(split_time)
@@ -62,10 +61,10 @@ def get_cp_times(file_path):
     ghost_times = ghost.cp_times
     for i in range(len(ghost_times)):
         ghost_times[i] = time_to_string(ghost_times[i]/1000)
-    return ghost_times
+    return [ghost_times, len(ghost_times)-1]
 
-def get_map_name(file_path):
-    regex_string = "[$][a-fA-F0-9][a-fA-F0-9][a-fA-F0-9]|[$][a-zA-Z]"
+def get_map_info(file_path):
+    regex_string = '[$][a-fA-F0-9][a-fA-F0-9][a-fA-F0-9]|[$][a-zA-Z]'
     g = Gbx(file_path)
     try:
         replay = g.get_class_by_id(GbxType.REPLAY_RECORD)
@@ -75,40 +74,19 @@ def get_map_name(file_path):
     track = replay.track
     challenge = track.get_class_by_id(GbxType.CHALLENGE)
     regex = re.sub(regex_string,'', challenge.map_name)
-    return regex.strip()
+    author = challenge.map_author
+    return [regex.strip(), author]
     
-
 def create_file(dir, map_name, inputs):
-    processed_file = open(f"{dir}/{map_name}_sector.txt", "w")
+    regex_string = '[\/:*?"<>|]'
+    regex = re.sub(regex_string, '', map_name)
+    processed_file = open(f"{dir}/{regex}_sector.txt", "w")
     for block in inputs:
         for input in block:
             processed_file.write(f"{input}\n")
         processed_file.write("\n")
 
     processed_file.close()
-
-def read_splits(main_path, map_name):
-    splits = []
-    splits_file = open(f"{main_path}/splits/{map_name}_splits.txt", "r")
-    for line in splits_file:
-        splits.append(line.split(" ")[1].strip())
-    splits_file.close()
-    return splits
-
-def read_inputs(main_path, map_name, processed=False):
-    inputs = []
-    if processed:
-        inputs_file = open(f"{main_path}/processed/{map_name}_sector.txt", "r")
-        temp = inputs_file.read().split("\n\n")
-        for block in temp:
-            inputs.append(block.split("\n"))
-        inputs.pop(-1)
-    else:
-        inputs_file = open(f"{main_path}/inputs/{map_name}_inputs.txt", "r")
-        for line in inputs_file:
-            inputs.append(line.strip())
-    inputs_file.close()
-    return inputs
 
 def create_segmented_run(splits, inputs):
     index = 0
@@ -213,11 +191,14 @@ def no_warp(inputs):
     else:
         inputs[-1][-1] = f"{time_to_string(time_converter(respawn_time(input))-time_offset)} press {key(input)}"
         
-    return inputs
+    return [inputs, time_offset]
 
 def generate_sector_inputs(file_path):
-    ghost_times = get_cp_times(file_path)
-    map_name = get_map_name(file_path)
+    if file_path == '':
+        return
+    
+    [ghost_times, num_cps] = get_cp_times(file_path)
+    [map_name, author] = get_map_info(file_path)
     with open(f"result.txt", 'w+') as f:
         generate_input_file.process_path(file_path, f.write)
     
@@ -235,6 +216,6 @@ def generate_sector_inputs(file_path):
         else:
             inputs.append(f"{time_to_string(int(input_times(line)[0])/1000)}-{time_to_string(int(input_times(line)[1])/1000)} press {key(line)}")
 
-    processed_inputs = no_warp(immediate_respawns(ghost_times, create_segmented_run(ghost_times, inputs)))
+    [processed_inputs, time_save] = no_warp(immediate_respawns(ghost_times, create_segmented_run(ghost_times, inputs)))
 
-    return [map_name, processed_inputs]
+    return [map_name, author, num_cps, time_to_string(time_converter(ghost_times[-1]) - time_save), processed_inputs]
