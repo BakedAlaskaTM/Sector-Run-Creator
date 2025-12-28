@@ -11,8 +11,10 @@ import functions
 # Variable Setup
 config_dict = functions.read_config()
 file_chosen = False
+file_path = ""
 sector_inputs = []
 map_name = ""
+ring_cps = []
 inputs_saved = False
 
 #window init
@@ -31,7 +33,7 @@ text_left.grid(column=0, row=2, sticky='NEWS')
 text_left.insert("1.0", "Summary:\n")
 
 text_right = scrolledtext.ScrolledText(root, font='Arial', background='black', foreground='white')
-text_right.grid(column=1, row=2, sticky='NEWS')
+text_right.grid(column=1, row=2, sticky='NEWS', rowspan=2)
 if config_dict["DESTINATION"].strip() == "":
     text_left.insert("2.0", "No save location set\n")
     intro_right = "Set a save location to start..."
@@ -42,16 +44,33 @@ text_right.insert('1.0', intro_right)
 
 def open_file():
     global file_chosen
-    global sector_inputs
-    global map_name
-    global inputs_saved
+    global file_path
     file_path = fd.askopenfilename(
         title='Open a Replay File',
         filetypes=[('Replay Files', '*.Gbx')]
     )
+    process_file(True)
+    file_chosen = True
+    return
+
+def process_file(from_open_file=False):
+    global sector_inputs
+    global map_name
+    global inputs_saved
+    global option_cache
+    global ring_cps
+
+    if not from_open_file:
+        if option_cache == save_option.get():
+            return
+        option_cache = save_option.get()
+        if file_path == "":
+            return
+    
     try:
-        [map_name, author, num_cps, final_time, sector_inputs] = functions.generate_sector_inputs(file_path)
+        [map_name, author, num_cps, ring_cps, final_time, sector_inputs] = functions.generate_sector_inputs(file_path, option=save_option.get())
     except:
+        messagebox.showerror("Error", "Failed to open replay file. Please ensure it is a valid .Gbx replay.")
         return
     input_text = ""
     for block in sector_inputs:
@@ -62,7 +81,6 @@ def open_file():
     text_left.insert("3.0", f"\nTrack Name: {map_name}\nAuthor: {author}\nCheckpoints: {num_cps}\nFinal Time: {final_time}\n")
     text_right.delete("1.0", END)
     text_right.insert("1.0", f"Inputs:\n{input_text.strip()}\n")
-    file_chosen = True
     inputs_saved = False
     return
 
@@ -93,8 +111,12 @@ change_dir_button = ttk.Button(
 
 def save_inputs():
     global inputs_saved
+    global file_path
+    if file_path == "":
+        tk.messagebox.showerror("Error", "No replay file opened.")
+        return
     try:
-        functions.create_file(config_dict["DESTINATION"], map_name, sector_inputs)
+        file_name = functions.create_file(config_dict["DESTINATION"], map_name, sector_inputs)
     except OSError as error:
         inputs_saved = False
         text_left.delete("7.0", "9.0")
@@ -102,7 +124,7 @@ def save_inputs():
     else:
         inputs_saved = True
         text_left.delete("7.0", "9.0")
-        text_left.insert("7.0", f"\nInputs file saved successfully!\n")
+        text_left.insert("7.0", f"\nSaved to {file_name}!\n")
     return
 
 save_file_button = ttk.Button(
@@ -132,8 +154,47 @@ def check_save_directory():
 
 root.after(200, check_save_directory)
 
+
+labels = ring_cps  # 1–17
+ring_cp_frame = Frame(root)
+ring_cp_frame.grid(column=0, row=3, sticky='NEWS')
+
+vars = []  # keep references to IntVars
+
+num = 1
+positions, rows, cols = functions.grid_positions(labels)
+
+for label, r, c in positions:
+    tk.Checkbutton(ring_cp_frame, text=str(label)).grid(
+        row=r, column=c, padx=10, pady=5, sticky="w"
+    )
+
+for c in range(cols):
+    ring_cp_frame.grid_columnconfigure(c, weight=1, uniform="x")
+
+# Optional: make rows expand evenly too
+for row in range(rows):
+    ring_cp_frame.grid_rowconfigure(row, weight=1)
+
+option_selector_frame = Frame(root)
+option_selector_frame.grid(column=0, row=4, sticky='NEWS')
+
+save_option = IntVar()
+save_option.set(2)
+option_cache = save_option.get()
+
+values = {
+    "No processing": 0,
+    "Warps": 1,
+    "No warps": 2
+}
+
+for (text, value) in values.items(): 
+    Radiobutton(option_selector_frame, text = text, variable = save_option, command=process_file,
+        value = value, indicator=0, background="light grey").pack(side=LEFT, expand=YES, fill=BOTH)
+
 open_button.grid(column=0, row=0, sticky='NEWS', columnspan=2)
 change_dir_button.grid(column=0, row=1, sticky='NEWS', columnspan=2)
-save_file_button.grid(column=0, row=3, sticky='NEWS', columnspan=2)
-close_window_button.grid(column=0, row=4, sticky='NEWS', columnspan=2)
+save_file_button.grid(column=0, row=5, sticky='NEWS', columnspan=2)
+close_window_button.grid(column=0, row=6, sticky='NEWS', columnspan=2)
 root.mainloop()

@@ -3,6 +3,67 @@ from pygbx import Gbx, GbxType
 import generate_input_file
 import os
 import re
+import unidecode
+
+def check_ring_match(cp_position, rings):
+    for ring in rings:
+        if ring[0] == "V":
+            if cp_position[0] == ring[1][0] and cp_position[1]-ring[1][1] <= 4 and cp_position[2] == ring[1][2]:
+                return True
+        else:
+            if cp_position == ring[1]:
+                return True
+    return False
+
+def int16_to_speed(x: int) -> float:
+    if not -32768 <= x <= 32767:
+        raise ValueError("Input must be int16: [-32768, 32767]")
+    
+    if x == -32768:
+        return 0.0
+    return math.exp(x / 1000.0)
+
+def int8_to_headingangle(x: int) -> float:
+    if not -128 <= x <= 127:
+        raise ValueError("Input must be in range [-128, 127]")
+    return (x / 128) * math.pi
+
+def int8_to_pitchangle(x: int) -> float:
+    if not -128 <= x <= 127:
+        raise ValueError("Input must be in range [-128, 127]")
+    return (x / 128) * (math.pi / 2)
+
+def calculate_offset(current_record, offset_time):
+    real_speed = int16_to_speed(current_record.speed)
+    vpitch = int8_to_pitchangle(current_record.vel_pitch)
+    vheading = int8_to_headingangle(current_record.vel_heading)
+    speed_x = real_speed * math.cos(vpitch) * math.cos(vheading)
+    speed_y = real_speed * math.cos(vpitch) * math.sin(vheading)
+    speed_z = real_speed * math.sin(vpitch)
+    offset_x = speed_x * (offset_time / 1000)
+    offset_y = speed_y * (offset_time / 1000)
+    offset_z = speed_z * (offset_time / 1000)
+    return [offset_x, offset_y, offset_z]
+
+def find_ring_checkpoints(challenge: GbxType.CHALLENGE, ghost: GbxType.CTN_GHOST):
+    cp_positions = []
+    rings = []
+    ring_cps = []
+    for cp_time in ghost.cp_times[0:-1]:
+        current_record = ghost.records[round(cp_time / ghost.sample_period)]
+        offset_time = cp_time % ghost.sample_period
+        offsets = calculate_offset(current_record, offset_time)
+        cp_positions.append(current_record.get_block_position(xoff=offsets[0], yoff=offsets[1], zoff=offsets[2]).as_array())
+    for block in challenge.blocks:
+        if "CheckpointRing" in block.name:
+            if block.name == "StadiumCheckpointRingV":
+                rings.append(["V", block.position.as_array()])
+            else:
+                rings.append(["H", block.position.as_array()])
+    for i in range(len(cp_positions)):
+        if check_ring_match(cp_positions[i], rings):
+            ring_cps.append(i+1)
+    return ring_cps
 
 def read_config(filename: str="config.txt", settings: list=["DESTINATION"]):
     config_file = open(filename, "r")
@@ -53,33 +114,23 @@ def input_times(input):
 def warp_destination(input):
     return input.split(" ")[2]
 
-def get_cp_times(file_path):
-    g = Gbx(file_path)
-
-    ghost = g.get_class_by_id(GbxType.CTN_GHOST)
-
-    ghost_times = ghost.cp_times
-    for i in range(len(ghost_times)):
-        ghost_times[i] = time_to_string(ghost_times[i]/1000)
+def get_cp_times(ghost: GbxType.CTN_GHOST):
+    ghost_times = []
+    for time in ghost.cp_times:
+        ghost_times.append(time_to_string(time/1000))
     return [ghost_times, len(ghost_times)-1]
 
-def get_map_info(file_path):
+def get_map_info(challenge: GbxType.CHALLENGE, ghost: GbxType.CTN_GHOST):
     regex_string = '[$][a-fA-F0-9][a-fA-F0-9][a-fA-F0-9]|[$][a-zA-Z]'
-    g = Gbx(file_path)
-    try:
-        replay = g.get_class_by_id(GbxType.REPLAY_RECORD)
-        track = replay.track
-    except AttributeError:
-        replay = g.get_class_by_id(GbxType.REPLAY_RECORD_OLD)
-    track = replay.track
-    challenge = track.get_class_by_id(GbxType.CHALLENGE)
     regex = re.sub(regex_string,'', challenge.map_name)
     author = challenge.map_author
-    return [regex.strip(), author]
+    ring_cps = find_ring_checkpoints(challenge, ghost)
+    return [regex.strip(), author, ring_cps]
     
 def create_file(dir, map_name, inputs):
-    regex_string = '[\/:*?"<>|]'
+    regex_string = '[॥\\/:*?"<>|]'
     regex = re.sub(regex_string, '', map_name)
+    regex = unidecode.unidecode(regex)
     processed_file = open(f"{dir}/{regex}_sector.txt", "w")
     for block in inputs:
         for input in block:
@@ -87,6 +138,7 @@ def create_file(dir, map_name, inputs):
         processed_file.write("\n")
 
     processed_file.close()
+    return f"{regex.split().join('_')}_sector.txt"
 
 def create_segmented_run(splits, inputs):
     index = 0
@@ -193,12 +245,21 @@ def no_warp(inputs):
         
     return [inputs, time_offset]
 
-def generate_sector_inputs(file_path):
+def generate_sector_inputs(file_path, option=2):
     if file_path == '':
         return
     
-    [ghost_times, num_cps] = get_cp_times(file_path)
-    [map_name, author] = get_map_info(file_path)
+    g = Gbx(file_path)
+    try:
+        replay = g.get_class_by_id(GbxType.REPLAY_RECORD)
+        track = replay.track
+    except AttributeError:
+        replay = g.get_class_by_id(GbxType.REPLAY_RECORD_OLD)
+    track = replay.track
+    challenge = track.get_class_by_id(GbxType.CHALLENGE)
+    ghost = g.get_class_by_id(GbxType.CTN_GHOST)
+    [ghost_times, num_cps] = get_cp_times(ghost)
+    [map_name, author, ring_cps] = get_map_info(challenge, ghost)
     with open(f"result.txt", 'w+') as f:
         generate_input_file.process_path(file_path, f.write)
     
@@ -207,7 +268,6 @@ def generate_sector_inputs(file_path):
     raw_inputs_file.close()
     os.remove("result.txt")
     raw_inputs.pop(-1)
-
     inputs = []
     for line in raw_inputs:
 
@@ -216,6 +276,33 @@ def generate_sector_inputs(file_path):
         else:
             inputs.append(f"{time_to_string(int(input_times(line)[0])/1000)}-{time_to_string(int(input_times(line)[1])/1000)} press {key(line)}")
 
-    [processed_inputs, time_save] = no_warp(immediate_respawns(ghost_times, create_segmented_run(ghost_times, inputs)))
+    if option == 0:
+        return [map_name, author, num_cps, ring_cps, ghost_times[-1], [raw_inputs]]
+    inputs = immediate_respawns(ghost_times, create_segmented_run(ghost_times, inputs))
+    if option == 1:
+        return [map_name, author, num_cps, ring_cps, time_to_string(time_converter(ghost_times[-1])), inputs]
 
-    return [map_name, author, num_cps, time_to_string(time_converter(ghost_times[-1]) - time_save), processed_inputs]
+    [processed_inputs, time_save] = no_warp(inputs)
+
+    return [map_name, author, num_cps, ring_cps, time_to_string(time_converter(ghost_times[-1]) - time_save), processed_inputs]
+
+def grid_positions(labels, prefer_tall=True):
+    n = len(labels)
+
+    if n == 0:
+        return [], 0, 0
+
+    cols = math.ceil(math.sqrt(n))
+    rows = math.ceil(n / cols)
+
+    # Optional: swap to prefer tall layouts
+    if prefer_tall and rows < cols:
+        rows, cols = cols, rows
+
+    positions = []
+    for i, label in enumerate(labels):
+        row = i % rows
+        col = i // rows
+        positions.append((label, row, col))
+
+    return positions, rows, cols
