@@ -16,6 +16,7 @@ sector_inputs = []
 map_name = ""
 ring_cps = []
 inputs_saved = False
+vars = {}
 
 #window init
 root = tk.Tk()
@@ -49,29 +50,40 @@ def open_file():
         title='Open a Replay File',
         filetypes=[('Replay Files', '*.Gbx')]
     )
-    process_file(True)
+    ring_cps = process_file(0)
     file_chosen = True
+    if ring_cps is not None:
+        create_ring_checkboxes(ring_cps, on_change=on_checkbox_change)
+    else:
+        create_ring_checkboxes([])
     return
 
-def process_file(from_open_file=False):
+def process_file(route=1):
     global sector_inputs
     global map_name
     global inputs_saved
     global option_cache
     global ring_cps
+    global vars
 
-    if not from_open_file:
+    if route == 1:
         if option_cache == save_option.get():
-            return
+            return None
         option_cache = save_option.get()
         if file_path == "":
-            return
+            return None
     
+    skipped_rings = []
+
+    for cp, toggle in vars.items():
+        if toggle.get() == 1:
+            skipped_rings.append(cp-1)
+
     try:
-        [map_name, author, num_cps, ring_cps, final_time, sector_inputs] = functions.generate_sector_inputs(file_path, option=save_option.get())
+        [map_name, author, num_cps, ring_cps, final_time, sector_inputs] = functions.generate_sector_inputs(file_path, option=save_option.get(), remove_rings=skipped_rings)
     except:
         messagebox.showerror("Error", "Failed to open replay file. Please ensure it is a valid .Gbx replay.")
-        return
+        return None
     input_text = ""
     for block in sector_inputs:
         for input in block:
@@ -82,7 +94,7 @@ def process_file(from_open_file=False):
     text_right.delete("1.0", END)
     text_right.insert("1.0", f"Inputs:\n{input_text.strip()}\n")
     inputs_saved = False
-    return
+    return ring_cps
 
 open_button = ttk.Button(
     root,
@@ -154,27 +166,39 @@ def check_save_directory():
 
 root.after(200, check_save_directory)
 
-
-labels = ring_cps  # 1–17
 ring_cp_frame = Frame(root)
 ring_cp_frame.grid(column=0, row=3, sticky='NEWS')
+def create_ring_checkboxes(ring_cps, on_change=None):
+    global vars
+    vars = {}  # keep references to IntVars
+    positions, rows, cols = functions.grid_positions(ring_cps)
 
-vars = []  # keep references to IntVars
+    def _traced_callback(label):
+        def callback(*_):
+            if on_change:
+                on_change(label, vars[label].get(), vars)
+        return callback
 
-num = 1
-positions, rows, cols = functions.grid_positions(labels)
+    for label, r, c in positions:
+        var = tk.IntVar(value=0)
+        vars[label] = var
 
-for label, r, c in positions:
-    tk.Checkbutton(ring_cp_frame, text=str(label)).grid(
-        row=r, column=c, padx=10, pady=5, sticky="w"
-    )
+        if on_change:
+            var.trace_add("write", _traced_callback(label))
 
-for c in range(cols):
-    ring_cp_frame.grid_columnconfigure(c, weight=1, uniform="x")
+        tk.Checkbutton(ring_cp_frame, text=str(label), variable=var).grid(
+            row=r, column=c, padx=10, pady=5, sticky="w"
+        )
+    for c in range(cols):
+        ring_cp_frame.grid_columnconfigure(c, weight=1, uniform="x")
+    # Optional: make rows expand evenly too
+    for row in range(rows):
+        ring_cp_frame.grid_rowconfigure(row, weight=1)
+    return vars
 
-# Optional: make rows expand evenly too
-for row in range(rows):
-    ring_cp_frame.grid_rowconfigure(row, weight=1)
+def on_checkbox_change(label, value, all_vars):
+    process_file(2)
+    return
 
 option_selector_frame = Frame(root)
 option_selector_frame.grid(column=0, row=4, sticky='NEWS')

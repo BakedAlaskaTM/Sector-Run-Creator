@@ -131,6 +131,7 @@ def create_file(dir, map_name, inputs):
     regex_string = '[॥\\/:*?"<>|]'
     regex = re.sub(regex_string, '', map_name)
     regex = unidecode.unidecode(regex)
+    regex = '_'.join(regex.split())
     processed_file = open(f"{dir}/{regex}_sector.txt", "w")
     for block in inputs:
         for input in block:
@@ -138,7 +139,7 @@ def create_file(dir, map_name, inputs):
         processed_file.write("\n")
 
     processed_file.close()
-    return f"{regex.split().join('_')}_sector.txt"
+    return f"{regex}_sector.txt"
 
 def create_segmented_run(splits, inputs):
     index = 0
@@ -245,7 +246,9 @@ def no_warp(inputs):
         
     return [inputs, time_offset]
 
-def generate_sector_inputs(file_path, option=2):
+def generate_sector_inputs(file_path, option=2, remove_rings=None):
+    if remove_rings is None:
+        remove_rings = []
     if file_path == '':
         return
     
@@ -260,6 +263,11 @@ def generate_sector_inputs(file_path, option=2):
     ghost = g.get_class_by_id(GbxType.CTN_GHOST)
     [ghost_times, num_cps] = get_cp_times(ghost)
     [map_name, author, ring_cps] = get_map_info(challenge, ghost)
+    ghost_times_filtered = []
+    for i in range(len(ghost_times)):
+        if (i) not in remove_rings:
+            ghost_times_filtered.append(ghost_times[i])
+
     with open(f"result.txt", 'w+') as f:
         generate_input_file.process_path(file_path, f.write)
     
@@ -278,7 +286,7 @@ def generate_sector_inputs(file_path, option=2):
 
     if option == 0:
         return [map_name, author, num_cps, ring_cps, ghost_times[-1], [raw_inputs]]
-    inputs = immediate_respawns(ghost_times, create_segmented_run(ghost_times, inputs))
+    inputs = immediate_respawns(ghost_times_filtered, create_segmented_run(ghost_times_filtered, inputs))
     if option == 1:
         return [map_name, author, num_cps, ring_cps, time_to_string(time_converter(ghost_times[-1])), inputs]
 
